@@ -43,6 +43,25 @@ export interface ScanResult {
   } | null;
 }
 
+export interface CheckResult {
+  ok: boolean;
+  error?: "not_found" | "disabled";
+  code?: string;
+  prize_label?: string;
+  whatsapp_group_link?: string;
+  raffle_open?: boolean;
+  already_registered?: boolean;
+  entry_name?: string | null;
+}
+
+export interface RegisterResult {
+  ok: boolean;
+  error?: "closed" | "invalid_name" | "invalid_phone" | "not_found" | "disabled";
+  already?: boolean;
+  name?: string;
+  whatsapp_group_link?: string;
+}
+
 export const RARITY_META: Record<
   Rarity,
   { label: string; color: string; glow: string }

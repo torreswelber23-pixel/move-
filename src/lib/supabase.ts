@@ -1,12 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+// Public project values (anon key is safe to ship — every write goes through
+// SECURITY DEFINER functions gated by the admin secret, and tables have RLS on).
+// Env vars override these when present.
+const DEFAULT_URL = "https://rqeoqxffypvspqnqcefo.supabase.co";
+const DEFAULT_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxZW9xeGZmeXB2c3BxbnFjZWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzNzA2OTUsImV4cCI6MjA5ODk0NjY5NX0.BcE50wz1ExW-eSKveY5MR2Q9AK_OT8csZazoJurwAm0";
 
-if (!url || !anonKey) {
-  // Helps catch missing env in dev / build logs
-  console.warn("[MOVE+] Missing NEXT_PUBLIC_SUPABASE_URL / ANON_KEY env vars.");
-}
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_URL;
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_ANON_KEY;
 
 /**
  * Shared Supabase client. Uses the public anon key — safe because every

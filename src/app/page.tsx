@@ -3,11 +3,11 @@ import { MoveLogo } from "@/components/MoveLogo";
 import { CodeEntry } from "@/components/CodeEntry";
 
 const BENEFITS = [
-  { emoji: "🎁", title: "Benefícios exclusivos", desc: "Cupons e vantagens que só quem escaneia recebe." },
-  { emoji: "✨", title: "Experiências diferentes", desc: "Cada garrafa abre algo novo. Nunca é igual." },
-  { emoji: "🏆", title: "Desafios premiados", desc: "Participe, se mova e concorra a prêmios." },
-  { emoji: "🔒", title: "Conteúdos secretos", desc: "Playlists, drops e conteúdos escondidos." },
-  { emoji: "💛", title: "Recompensas da comunidade", desc: "Entre pra comunidade MOVE+ e ganhe junto." },
+  { emoji: "💰", title: "Concorra a R$100", desc: "Cada garrafa escaneada te coloca na disputa do prêmio em dinheiro." },
+  { emoji: "📲", title: "Cadastro em segundos", desc: "Nome + WhatsApp e pronto: você já está concorrendo." },
+  { emoji: "🎉", title: "Sorteio ao vivo", desc: "O ganhador é sorteado no grupo, na frente de todo mundo." },
+  { emoji: "💛", title: "Comunidade MOVE+", desc: "Entre no grupo e não perca os próximos sorteios e drops." },
+  { emoji: "💧", title: "Quanto mais garrafas", desc: "Mais códigos, mais chances de ser o sortudo do PIX." },
 ];
 
 const ATTRS = [
@@ -39,9 +39,9 @@ export default function Home() {
             <span className="text-move-yellow">+</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-lg text-neutral-300 sm:text-xl">
-            Se você não gosta de surpresas,{" "}
-            <span className="font-bold text-white">não compre esta garrafa.</span>{" "}
-            Cada garrafa tem um código único. Uma nova experiência a cada scan.
+            Cada garrafa tem um código único que te coloca na disputa de{" "}
+            <span className="font-bold text-move-yellow">R$100 no PIX.</span>{" "}
+            Escaneou, cadastrou, tá concorrendo.
           </p>
 
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -103,7 +103,7 @@ export default function Home() {
               <p className="font-display text-xl uppercase leading-tight text-move-yellow">
                 Cada garrafa, um código único.
               </p>
-              <p className="mt-1 text-sm text-neutral-300">Uma nova experiência.</p>
+              <p className="mt-1 text-sm text-neutral-300">Uma chance de ganhar R$100.</p>
             </div>
           </div>
         </div>

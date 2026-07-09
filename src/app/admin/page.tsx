@@ -5,9 +5,9 @@ import { getSupabase } from "@/lib/supabase";
 import { MoveLogo } from "@/components/MoveLogo";
 import { StatsPanel } from "@/components/admin/StatsPanel";
 import { CodesPanel } from "@/components/admin/CodesPanel";
-import { ExperiencesPanel } from "@/components/admin/ExperiencesPanel";
+import { RafflePanel } from "@/components/admin/RafflePanel";
 
-type Tab = "stats" | "codes" | "experiences";
+type Tab = "raffle" | "stats" | "codes";
 
 export default function AdminPage() {
   const [secret, setSecret] = useState<string>("");
@@ -15,7 +15,7 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<Tab>("stats");
+  const [tab, setTab] = useState<Tab>("raffle");
 
   useEffect(() => {
     const saved = sessionStorage.getItem("move_admin_secret");
@@ -87,9 +87,9 @@ export default function AdminPage() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: "raffle", label: "Sorteio" },
     { id: "stats", label: "Visão geral" },
     { id: "codes", label: "Códigos" },
-    { id: "experiences", label: "Experiências" },
   ];
 
   return (
@@ -127,9 +127,9 @@ export default function AdminPage() {
       </header>
 
       <div className="mx-auto max-w-5xl px-5 py-8">
+        {tab === "raffle" && <RafflePanel secret={secret} />}
         {tab === "stats" && <StatsPanel secret={secret} />}
         {tab === "codes" && <CodesPanel secret={secret} />}
-        {tab === "experiences" && <ExperiencesPanel secret={secret} />}
       </div>
     </main>
   );
