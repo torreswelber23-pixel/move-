@@ -4,9 +4,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import QRCodeLib from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 
-// A4 portrait at ~150 DPI, used when no artwork is uploaded
-const A4_W = 1240;
-const A4_H = 1754;
+interface Slot {
+  id: number;
+  x: number; // center %, of width
+  y: number; // center %, of height
+  size: number; // %, of width (square box)
+}
+
+interface PrintLog {
+  id: string;
+  batch: string | null;
+  action: string;
+  count: number;
+  created_at: string;
+}
+
+const DEFAULT_SLOTS: Slot[] = Array.from({ length: 10 }, (_, i) => {
+  const col = i % 2;
+  const row = Math.floor(i / 2);
+  return { id: i + 1, x: 25 + col * 50, y: 10 + row * 18, size: 18 };
+});
+
+const A4_RATIO = 210 / 297; // width/height
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -17,105 +36,205 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function downscaleImage(
+  dataUrl: string,
+  maxWidth = 1800,
+): Promise<{ dataUrl: string; w: number; h: number }> {
+  return new Promise((resolve) => {
+    loadImage(dataUrl).then((img) => {
+      const scale = Math.min(1, maxWidth / img.naturalWidth);
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      // flatten on white so transparent PNGs don't turn black as JPEG
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.85), w, h });
+    });
+  });
+}
+
+function clamp(v: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function timestampName() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
 export function LabelSheet({ secret }: { secret: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [artSrc, setArtSrc] = useState<string>("");
+  const drag = useRef<{
+    id: number;
+    mode: "move" | "resize";
+    startX: number;
+    startY: number;
+    orig: Slot;
+  } | null>(null);
+
+  const [artSrc, setArtSrc] = useState("");
+  const [artDims, setArtDims] = useState({ w: 1240, h: 1754 });
+  const [slots, setSlots] = useState<Slot[]>(DEFAULT_SLOTS);
   const [codes, setCodes] = useState<string[]>([]);
   const [batch, setBatch] = useState("");
   const [origin, setOrigin] = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [loadingTpl, setLoadingTpl] = useState(true);
   const [generating, setGenerating] = useState(false);
-
-  // grid controls
-  const [cols, setCols] = useState(2);
-  const [rows, setRows] = useState(5);
-  const [qrPct, setQrPct] = useState(55); // % of the smaller cell dimension
-  const [offX, setOffX] = useState(0); // % nudge
-  const [offY, setOffY] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [history, setHistory] = useState<PrintLog[]>([]);
   const [showCode, setShowCode] = useState(true);
-
-  const total = cols * rows;
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
-  function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  const loadHistory = useCallback(async () => {
+    const supabase = getSupabase();
+    const { data } = await supabase.rpc("move_admin_list_label_prints", {
+      p_secret: secret,
+      p_limit: 30,
+    });
+    setHistory((data as PrintLog[]) ?? []);
+  }, [secret]);
+
+  useEffect(() => {
+    (async () => {
+      const supabase = getSupabase();
+      const { data } = await supabase.rpc("move_admin_get_label_template", {
+        p_secret: secret,
+      });
+      const row = data as { art_data_url: string | null; layout: Slot[] } | null;
+      if (row?.layout?.length) setSlots(row.layout);
+      if (row?.art_data_url) {
+        setArtSrc(row.art_data_url);
+        const img = await loadImage(row.art_data_url);
+        setArtDims({ w: img.naturalWidth, h: img.naturalHeight });
+      }
+      setLoadingTpl(false);
+      loadHistory();
+    })();
+  }, [secret, loadHistory]);
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setArtSrc(reader.result as string);
+    reader.onload = async () => {
+      const { dataUrl, w, h } = await downscaleImage(reader.result as string);
+      setArtSrc(dataUrl);
+      setArtDims({ w, h });
+    };
     reader.readAsDataURL(file);
   }
 
-  async function generate() {
+  function addSlot() {
+    const id = (slots.reduce((m, s) => Math.max(m, s.id), 0) || 0) + 1;
+    setSlots((s) => [...s, { id, x: 50, y: 50, size: 18 }]);
+    setSelected(id);
+    setCodes([]);
+  }
+  function removeSlot(id: number) {
+    setSlots((s) => s.filter((sl) => sl.id !== id));
+    if (selected === id) setSelected(null);
+    setCodes([]);
+  }
+
+  function onSlotPointerDown(
+    e: React.PointerEvent,
+    id: number,
+    mode: "move" | "resize",
+  ) {
+    e.stopPropagation();
+    e.preventDefault();
+    const slot = slots.find((s) => s.id === id);
+    if (!slot) return;
+    setSelected(id);
+    drag.current = { id, mode, startX: e.clientX, startY: e.clientY, orig: slot };
+    (e.target as Element).setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const { id, mode, orig, startX, startY } = drag.current;
+    const dxPct = ((e.clientX - startX) / rect.width) * 100;
+    const dyPct = ((e.clientY - startY) / rect.height) * 100;
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        if (mode === "move") {
+          return { ...s, x: clamp(orig.x + dxPct, 2, 98), y: clamp(orig.y + dyPct, 2, 98) };
+        }
+        return { ...s, size: clamp(orig.size + dxPct, 4, 60) };
+      }),
+    );
+  }
+
+  function onPointerUp() {
+    drag.current = null;
+  }
+
+  async function generateCodes() {
+    if (slots.length === 0) return alert("Adicione pelo menos um QR na folha.");
     setGenerating(true);
     const supabase = getSupabase();
     const { data, error } = await supabase.rpc("move_admin_generate_codes", {
       p_secret: secret,
-      p_count: total,
+      p_count: slots.length,
       p_batch: batch || null,
     });
     setGenerating(false);
-    if (error) {
-      alert("Erro ao gerar códigos.");
-      return;
-    }
+    if (error) return alert("Erro ao gerar códigos.");
     setCodes((data as string[]) ?? []);
   }
 
-  const compose = useCallback(async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  async function saveTemplate() {
+    setSaving(true);
+    const supabase = getSupabase();
+    await supabase.rpc("move_admin_save_label_template", {
+      p_secret: secret,
+      p_art_data_url: artSrc || null,
+      p_layout: slots,
+    });
+    setSaving(false);
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1800);
+  }
 
-    let bgW = A4_W;
-    let bgH = A4_H;
-    let art: HTMLImageElement | null = null;
-    if (artSrc) {
-      art = await loadImage(artSrc);
-      bgW = art.naturalWidth;
-      bgH = art.naturalHeight;
-    }
+  async function compose(): Promise<HTMLCanvasElement | null> {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const bgW = artDims.w;
+    const bgH = artDims.h;
     canvas.width = bgW;
     canvas.height = bgH;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return null;
 
-    // background
-    if (art) {
-      ctx.drawImage(art, 0, 0, bgW, bgH);
-    } else {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, bgW, bgH);
-      // faint grid guides
-      ctx.strokeStyle = "#e5e5e5";
-      ctx.lineWidth = 2;
-      for (let c = 1; c < cols; c++) {
-        const x = (bgW / cols) * c;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, bgH);
-        ctx.stroke();
-      }
-      for (let r = 1; r < rows; r++) {
-        const y = (bgH / rows) * r;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(bgW, y);
-        ctx.stroke();
-      }
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, bgW, bgH);
+    if (artSrc) {
+      const img = await loadImage(artSrc);
+      ctx.drawImage(img, 0, 0, bgW, bgH);
     }
 
-    const cellW = bgW / cols;
-    const cellH = bgH / rows;
-    const qrSize = (Math.min(cellW, cellH) * qrPct) / 100;
-
-    for (let i = 0; i < Math.min(codes.length, total); i++) {
-      const r = Math.floor(i / cols);
-      const c = i % cols;
-      const cx = cellW * c + cellW / 2 + (offX / 100) * cellW;
-      const cy = cellH * r + cellH / 2 + (offY / 100) * cellH;
-
-      const url = `${origin}/s/${codes[i]}`;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const code = codes[i];
+      if (!code) continue;
+      const qrSize = (slot.size / 100) * bgW;
+      const cx = (slot.x / 100) * bgW;
+      const cy = (slot.y / 100) * bgH;
+      const url = `${origin}/s/${code}`;
       const qrDataUrl = await QRCodeLib.toDataURL(url, {
         width: Math.round(qrSize),
         margin: 1,
@@ -123,40 +242,48 @@ export function LabelSheet({ secret }: { secret: string }) {
         errorCorrectionLevel: "M",
       });
       const qrImg = await loadImage(qrDataUrl);
-
       const qx = cx - qrSize / 2;
       const qy = cy - qrSize / 2;
-      // white pad behind QR so it scans over dark art
-      ctx.fillStyle = "#ffffff";
       const pad = qrSize * 0.06;
+      ctx.fillStyle = "#ffffff";
       ctx.fillRect(qx - pad, qy - pad, qrSize + pad * 2, qrSize + pad * 2);
       ctx.drawImage(qrImg, qx, qy, qrSize, qrSize);
-
       if (showCode) {
         ctx.fillStyle = "#000000";
         ctx.font = `bold ${Math.round(qrSize * 0.13)}px monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(codes[i], cx, qy + qrSize + pad * 2);
+        ctx.fillText(code, cx, qy + qrSize + pad * 2);
       }
     }
-  }, [artSrc, codes, cols, rows, qrPct, offX, offY, showCode, origin, total]);
+    return canvas;
+  }
 
-  useEffect(() => {
-    compose();
-  }, [compose]);
+  async function logPrint(action: "download" | "print") {
+    const supabase = getSupabase();
+    await supabase.rpc("move_admin_log_label_print", {
+      p_secret: secret,
+      p_batch: batch || null,
+      p_action: action,
+      p_codes: codes,
+    });
+    loadHistory();
+  }
 
-  function download() {
-    const canvas = canvasRef.current;
+  async function download() {
+    if (codes.length === 0) return alert("Gere os códigos primeiro.");
+    const canvas = await compose();
     if (!canvas) return;
     const a = document.createElement("a");
     a.href = canvas.toDataURL("image/png");
-    a.download = `moveplus-folha-${batch || "a4"}.png`;
+    a.download = `moveplus-folha-${batch || "sem-lote"}-${timestampName()}.png`;
     a.click();
+    logPrint("download");
   }
 
-  function print() {
-    const canvas = canvasRef.current;
+  async function printSheet() {
+    if (codes.length === 0) return alert("Gere os códigos primeiro.");
+    const canvas = await compose();
     if (!canvas) return;
     const dataUrl = canvas.toDataURL("image/png");
     const w = window.open("");
@@ -165,9 +292,10 @@ export function LabelSheet({ secret }: { secret: string }) {
       `<html><head><title>MOVE+ folha</title><style>@page{size:A4;margin:0}body{margin:0}img{width:100%;display:block}</style></head><body><img src="${dataUrl}" onload="window.print()"/></body></html>`,
     );
     w.document.close();
+    logPrint("print");
   }
 
-  const num = (v: string) => Number(v) || 0;
+  const aspectRatio = artSrc ? artDims.w / artDims.h : A4_RATIO;
 
   return (
     <div>
@@ -175,12 +303,11 @@ export function LabelSheet({ secret }: { secret: string }) {
         Folha A4 · QR nos rótulos
       </h2>
       <p className="mt-2 max-w-2xl text-sm text-neutral-400">
-        Suba a arte da sua folha A4 (com os rótulos), ajuste a grade pra encaixar
-        um QR único em cada rótulo, gere os códigos e baixe/imprima. Cada QR
-        aponta pro código único da garrafa.
+        Suba a arte, arraste cada QR pra cima do rótulo certo e ajuste o tamanho
+        pelo cantinho amarelo. Clique em <b>Salvar layout</b> — da próxima vez
+        tudo carrega automático, só troca os códigos.
       </p>
 
-      {/* controls */}
       <div className="mt-6 grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-move-panel p-4">
@@ -194,92 +321,186 @@ export function LabelSheet({ secret }: { secret: string }) {
               className="mt-2 w-full text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-move-yellow file:px-3 file:py-2 file:text-xs file:font-bold file:text-black"
             />
             <p className="mt-2 text-xs text-neutral-600">
-              Sem arte? Uso uma folha branca com grade pra você testar.
+              {artSrc
+                ? "Arte carregada e salva. Suba outra pra substituir."
+                : "Sem arte, mostro uma folha em branco pra você posicionar."}
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-move-panel p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Ctrl label={`Colunas: ${cols}`}>
-                <input type="range" min={1} max={5} value={cols}
-                  onChange={(e) => setCols(num(e.target.value))} className="w-full accent-move-yellow" />
-              </Ctrl>
-              <Ctrl label={`Linhas: ${rows}`}>
-                <input type="range" min={1} max={8} value={rows}
-                  onChange={(e) => setRows(num(e.target.value))} className="w-full accent-move-yellow" />
-              </Ctrl>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase text-neutral-500">
+                {slots.length} QR na folha
+              </p>
+              <button
+                onClick={addSlot}
+                className="rounded-lg border border-white/15 px-2 py-1 text-xs font-bold text-neutral-200 hover:border-move-yellow"
+              >
+                + Adicionar
+              </button>
             </div>
-            <Ctrl label={`Tamanho do QR: ${qrPct}%`}>
-              <input type="range" min={20} max={95} value={qrPct}
-                onChange={(e) => setQrPct(num(e.target.value))} className="w-full accent-move-yellow" />
-            </Ctrl>
-            <div className="grid grid-cols-2 gap-3">
-              <Ctrl label={`Ajuste ↔: ${offX}%`}>
-                <input type="range" min={-40} max={40} value={offX}
-                  onChange={(e) => setOffX(num(e.target.value))} className="w-full accent-move-yellow" />
-              </Ctrl>
-              <Ctrl label={`Ajuste ↕: ${offY}%`}>
-                <input type="range" min={-40} max={40} value={offY}
-                  onChange={(e) => setOffY(num(e.target.value))} className="w-full accent-move-yellow" />
-              </Ctrl>
-            </div>
+            {selected != null && (
+              <button
+                onClick={() => removeSlot(selected)}
+                className="w-full rounded-lg border border-red-400/40 px-2 py-1.5 text-xs font-bold text-red-400 hover:bg-red-400/10"
+              >
+                Remover QR selecionado
+              </button>
+            )}
             <label className="flex items-center gap-2 text-sm text-neutral-300">
-              <input type="checkbox" checked={showCode}
-                onChange={(e) => setShowCode(e.target.checked)} className="accent-move-yellow" />
+              <input
+                type="checkbox"
+                checked={showCode}
+                onChange={(e) => setShowCode(e.target.checked)}
+                className="accent-move-yellow"
+              />
               Escrever o código embaixo do QR
             </label>
+            <button
+              onClick={saveTemplate}
+              disabled={saving}
+              className="w-full rounded-lg bg-move-yellow px-4 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-60"
+            >
+              {saving ? "Salvando…" : savedFlash ? "✓ Layout salvo" : "💾 Salvar layout"}
+            </button>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-move-panel p-4 space-y-3">
-            <Ctrl label="Lote (opcional)">
-              <input value={batch} onChange={(e) => setBatch(e.target.value)}
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-neutral-500">
+                Lote (opcional)
+              </span>
+              <input
+                value={batch}
+                onChange={(e) => setBatch(e.target.value)}
                 placeholder="ex: folha-01"
-                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none" />
-            </Ctrl>
+                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+              />
+            </label>
             <button
-              onClick={generate}
+              onClick={generateCodes}
               disabled={generating}
               className="w-full rounded-lg bg-move-yellow px-4 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-60"
             >
-              {generating ? "Gerando…" : `Gerar ${total} códigos`}
+              {generating ? "Gerando…" : `Gerar ${slots.length} códigos`}
             </button>
             {codes.length > 0 && (
               <p className="text-xs text-neutral-400">
-                {codes.length} código(s) neste lote. Gerar de novo cria novos códigos.
+                {codes.length} código(s) prontos pra esta folha.
               </p>
             )}
             <div className="flex gap-2">
-              <button onClick={download} disabled={codes.length === 0}
-                className="flex-1 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-move-yellow disabled:opacity-40">
+              <button
+                onClick={download}
+                disabled={codes.length === 0}
+                className="flex-1 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-move-yellow disabled:opacity-40"
+              >
                 ⬇ Baixar PNG
               </button>
-              <button onClick={print} disabled={codes.length === 0}
-                className="flex-1 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-move-yellow disabled:opacity-40">
+              <button
+                onClick={printSheet}
+                disabled={codes.length === 0}
+                className="flex-1 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-move-yellow disabled:opacity-40"
+              >
                 🖨️ Imprimir
               </button>
             </div>
           </div>
         </div>
 
-        {/* preview */}
         <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4">
           <p className="mb-3 text-xs font-semibold uppercase text-neutral-500">
-            Prévia {codes.length === 0 && "(gere os códigos pra aparecerem os QR)"}
+            {loadingTpl
+              ? "Carregando layout salvo…"
+              : "Arraste cada QR pro lugar certo. Puxe o cantinho ↘ pra redimensionar."}
           </p>
-          <div className="mx-auto max-w-md overflow-hidden rounded-lg bg-white">
-            <canvas ref={canvasRef} className="h-auto w-full" />
+          <div
+            ref={containerRef}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            className="relative mx-auto max-w-md select-none overflow-hidden rounded-lg bg-white"
+            style={{ aspectRatio: `${aspectRatio}` }}
+          >
+            {artSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={artSrc}
+                alt=""
+                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                draggable={false}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-white" />
+            )}
+            {slots.map((slot) => (
+              <div
+                key={slot.id}
+                onPointerDown={(e) => onSlotPointerDown(e, slot.id, "move")}
+                onClick={() => setSelected(slot.id)}
+                className={`absolute flex cursor-move items-center justify-center border-2 ${
+                  selected === slot.id
+                    ? "border-move-yellow bg-move-yellow/20"
+                    : "border-black/40 bg-black/10"
+                }`}
+                style={{
+                  left: `${slot.x}%`,
+                  top: `${slot.y}%`,
+                  width: `${slot.size}%`,
+                  aspectRatio: "1 / 1",
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <span className="pointer-events-none text-[10px] font-bold text-black/70">
+                  {codes[slots.findIndex((s) => s.id === slot.id)] || "QR"}
+                </span>
+                <div
+                  onPointerDown={(e) => onSlotPointerDown(e, slot.id, "resize")}
+                  className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-white bg-move-yellow"
+                />
+              </div>
+            ))}
           </div>
+          <canvas ref={canvasRef} className="hidden" />
         </div>
       </div>
-    </div>
-  );
-}
 
-function Ctrl({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-xs font-semibold uppercase text-neutral-500">{label}</span>
-      {children}
-    </label>
+      <h3 className="mt-8 text-sm font-bold uppercase tracking-wide text-neutral-400">
+        Histórico de folhas geradas
+      </h3>
+      <div className="mt-3 overflow-x-auto rounded-2xl border border-white/10">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-black/40 text-xs uppercase text-neutral-500">
+            <tr>
+              <th className="px-4 py-2">Quando</th>
+              <th className="px-4 py-2">Lote</th>
+              <th className="px-4 py-2">Ação</th>
+              <th className="px-4 py-2">Códigos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-5 text-neutral-500">
+                  Nenhuma folha gerada ainda.
+                </td>
+              </tr>
+            ) : (
+              history.map((h) => (
+                <tr key={h.id} className="border-t border-white/5">
+                  <td className="px-4 py-2 text-neutral-300">
+                    {new Date(h.created_at).toLocaleString("pt-BR")}
+                  </td>
+                  <td className="px-4 py-2 text-move-yellow">{h.batch ?? "—"}</td>
+                  <td className="px-4 py-2 text-neutral-400">
+                    {h.action === "print" ? "🖨️ Impressão" : "⬇ Download"}
+                  </td>
+                  <td className="px-4 py-2 text-neutral-300">{h.count}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
