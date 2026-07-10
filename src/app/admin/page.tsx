@@ -6,8 +6,9 @@ import { MoveLogo } from "@/components/MoveLogo";
 import { StatsPanel } from "@/components/admin/StatsPanel";
 import { CodesPanel } from "@/components/admin/CodesPanel";
 import { RafflePanel } from "@/components/admin/RafflePanel";
+import { LabelSheet } from "@/components/admin/LabelSheet";
 
-type Tab = "raffle" | "stats" | "codes";
+type Tab = "raffle" | "labels" | "stats" | "codes";
 
 export default function AdminPage() {
   const [secret, setSecret] = useState<string>("");
@@ -88,6 +89,7 @@ export default function AdminPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "raffle", label: "Sorteio" },
+    { id: "labels", label: "Rótulos" },
     { id: "stats", label: "Visão geral" },
     { id: "codes", label: "Códigos" },
   ];
@@ -128,6 +130,7 @@ export default function AdminPage() {
 
       <div className="mx-auto max-w-5xl px-5 py-8">
         {tab === "raffle" && <RafflePanel secret={secret} />}
+        {tab === "labels" && <LabelSheet secret={secret} />}
         {tab === "stats" && <StatsPanel secret={secret} />}
         {tab === "codes" && <CodesPanel secret={secret} />}
       </div>

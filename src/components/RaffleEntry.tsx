@@ -6,7 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import type { CheckResult, RegisterResult } from "@/lib/types";
 import { MoveLogo } from "@/components/MoveLogo";
 
-type Stage = "opening" | "form" | "done" | "already" | "closed";
+type Stage = "opening" | "form" | "done" | "already" | "closed" | "expired";
 
 export function RaffleEntry({
   code,
@@ -15,11 +15,14 @@ export function RaffleEntry({
   code: string;
   check: CheckResult;
 }) {
-  const initial: Stage = !check.raffle_open
-    ? "closed"
-    : check.already_registered
-      ? "already"
-      : "form";
+  const initial: Stage =
+    check.state === "expired"
+      ? "expired"
+      : check.state === "registered" || check.already_registered
+        ? "already"
+        : !check.raffle_open
+          ? "closed"
+          : "form";
 
   const [stage, setStage] = useState<Stage>("opening");
   const [name, setName] = useState("");
@@ -29,6 +32,7 @@ export function RaffleEntry({
 
   const prize = check.prize_label || "R$100";
   const waLink = check.whatsapp_group_link || "";
+  const buyLink = check.where_to_buy || "";
 
   useEffect(() => {
     const t = setTimeout(() => setStage(initial), 1600);
@@ -51,6 +55,7 @@ export function RaffleEntry({
     setLoading(false);
     const res = (data ?? { ok: false }) as RegisterResult;
     if (err || !res.ok) {
+      if (res.error === "expired") return setStage("expired");
       setError(
         res.error === "closed"
           ? "O sorteio foi encerrado."
@@ -62,6 +67,23 @@ export function RaffleEntry({
     }
     setStage("done");
   }
+
+  // CTA to buy a bottle (shown on expired / closed screens)
+  const BuyCta = () =>
+    buyLink ? (
+      <a
+        href={buyLink.startsWith("http") ? buyLink : `https://${buyLink}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-7 block w-full rounded-xl bg-move-yellow px-6 py-4 text-base font-black uppercase tracking-wider text-black transition hover:brightness-95"
+      >
+        Quero comprar uma garrafa 💧
+      </a>
+    ) : (
+      <p className="mt-7 rounded-xl border border-white/10 bg-move-panel px-4 py-3 text-sm text-neutral-400">
+        Compre uma garrafa MOVE+ e escaneie um novo código pra participar.
+      </p>
+    );
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-move-dark bg-grain px-6 py-12 text-center">
@@ -107,6 +129,11 @@ export function RaffleEntry({
               Cadastre-se pra entrar no sorteio. No final, sorteamos um ganhador
               ao vivo no grupo. 💛
             </p>
+            {check.ttl_minutes && check.ttl_minutes > 0 && (
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-move-yellow/80">
+                ⏳ Este código vale por {check.ttl_minutes} min. Corre!
+              </p>
+            )}
 
             <div className="mt-7 space-y-3 text-left">
               <input
@@ -144,8 +171,9 @@ export function RaffleEntry({
               {stage === "already" ? "Você já está na disputa!" : "Boa sorte!"}
             </h1>
             <p className="mx-auto mt-4 max-w-xs text-neutral-300">
-              Você está concorrendo a <span className="font-bold text-move-yellow">{prize}</span>.
-              O ganhador será sorteado no grupo — entra lá pra não perder!
+              Você está concorrendo a{" "}
+              <span className="font-bold text-move-yellow">{prize}</span>. O
+              ganhador será sorteado no grupo — entra lá pra não perder!
             </p>
 
             {waLink ? (
@@ -172,9 +200,30 @@ export function RaffleEntry({
           </div>
         )}
 
+        {stage === "expired" && (
+          <div className="mt-14 animate-reveal">
+            <div className="text-6xl">⏳</div>
+            <h1 className="mt-5 font-display text-4xl uppercase leading-none text-white">
+              Esse código já era!
+            </h1>
+            <p className="mx-auto mt-3 max-w-xs text-neutral-300">
+              Este código já foi resgatado ou passou da validade. Quer saber o
+              que tinha aqui e concorrer a{" "}
+              <span className="font-bold text-move-yellow">{prize}</span>?
+            </p>
+            <BuyCta />
+            <Link
+              href="/"
+              className="mt-6 inline-block text-xs font-semibold uppercase tracking-wider text-neutral-500 transition hover:text-move-yellow"
+            >
+              Conheça a MOVE+
+            </Link>
+          </div>
+        )}
+
         {stage === "closed" && (
           <div className="mt-16 animate-reveal">
-            <div className="text-6xl">⏳</div>
+            <div className="text-6xl">🏁</div>
             <h1 className="mt-5 font-display text-3xl uppercase text-white">
               Sorteio encerrado
             </h1>
@@ -182,9 +231,10 @@ export function RaffleEntry({
               Este sorteio já foi finalizado. Fique ligado nos próximos drops da
               MOVE+!
             </p>
+            <BuyCta />
             <Link
               href="/"
-              className="mt-8 inline-block rounded-xl bg-move-yellow px-6 py-3 text-sm font-black uppercase tracking-wider text-black"
+              className="mt-6 inline-block rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold uppercase tracking-wider text-neutral-300"
             >
               Início
             </Link>

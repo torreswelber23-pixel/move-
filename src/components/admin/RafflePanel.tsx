@@ -17,6 +17,8 @@ interface Settings {
   prize_label?: string;
   whatsapp_group_link?: string;
   raffle_open?: string;
+  code_ttl_minutes?: string;
+  where_to_buy?: string;
 }
 
 export function RafflePanel({ secret }: { secret: string }) {
@@ -180,6 +182,31 @@ export function RafflePanel({ secret }: { secret: string }) {
             placeholder="https://chat.whatsapp.com/…"
             className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
           />
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-move-panel p-5">
+          <label className="text-xs font-semibold uppercase text-neutral-500">
+            Validade do código (minutos)
+          </label>
+          <input
+            type="number"
+            min={0}
+            defaultValue={settings.code_ttl_minutes ?? "60"}
+            onBlur={(e) => saveSetting("code_ttl_minutes", e.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-neutral-600">0 = sem expiração por tempo (só uso único).</p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-move-panel p-5">
+          <label className="text-xs font-semibold uppercase text-neutral-500">
+            Onde comprar (link / WhatsApp)
+          </label>
+          <input
+            defaultValue={settings.where_to_buy ?? ""}
+            onBlur={(e) => saveSetting("where_to_buy", e.target.value)}
+            placeholder="https://wa.me/55… ou link da loja"
+            className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+          <p className="mt-1 text-xs text-neutral-600">Aparece pra quem pega um código expirado.</p>
         </div>
       </div>
 

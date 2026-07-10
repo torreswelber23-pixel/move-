@@ -43,20 +43,31 @@ export interface ScanResult {
   } | null;
 }
 
+export type CodeState = "open" | "registered" | "expired";
+
 export interface CheckResult {
   ok: boolean;
   error?: "not_found" | "disabled";
+  state?: CodeState;
   code?: string;
   prize_label?: string;
   whatsapp_group_link?: string;
+  where_to_buy?: string;
   raffle_open?: boolean;
+  ttl_minutes?: number;
   already_registered?: boolean;
   entry_name?: string | null;
 }
 
 export interface RegisterResult {
   ok: boolean;
-  error?: "closed" | "invalid_name" | "invalid_phone" | "not_found" | "disabled";
+  error?:
+    | "closed"
+    | "invalid_name"
+    | "invalid_phone"
+    | "not_found"
+    | "disabled"
+    | "expired";
   already?: boolean;
   name?: string;
   whatsapp_group_link?: string;
