@@ -109,6 +109,26 @@ export default function Home() {
         </div>
       </section>
 
+      {/* driver CTA */}
+      <section className="relative z-10 border-t border-white/10 px-5 py-12 sm:px-8">
+        <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 rounded-2xl border border-move-yellow/40 bg-move-yellow/5 p-6 sm:flex-row">
+          <div>
+            <p className="font-display text-2xl uppercase text-white">
+              🚗 É motorista? <span className="text-move-yellow">Ganhe vendendo MOVE+</span>
+            </p>
+            <p className="mt-1 text-sm text-neutral-300">
+              R$1 por garrafa, níveis, bônus e ranking. Suba de Bronze a Diamante.
+            </p>
+          </div>
+          <Link
+            href="/motorista"
+            className="shrink-0 rounded-xl bg-move-yellow px-6 py-3 text-sm font-black uppercase tracking-wider text-black"
+          >
+            Ser parceiro
+          </Link>
+        </div>
+      </section>
+
       {/* before you throw away */}
       <section className="relative z-10 px-5 py-16 sm:px-8">
         <div className="mx-auto max-w-2xl text-center">
