@@ -62,6 +62,93 @@ function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+/**
+ * Finds the sample/placeholder QR squares in the artwork: big bright
+ * (white-ish) blobs that are roughly square. Returns slots in reading
+ * order (top-to-bottom, left-to-right), sized/positioned as percentages.
+ */
+async function detectQrSlots(dataUrl: string): Promise<Slot[]> {
+  const img = await loadImage(dataUrl);
+  const maxW = 900;
+  const scale = Math.min(1, maxW / img.naturalWidth);
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w;
+  cv.height = h;
+  const ctx = cv.getContext("2d")!;
+  ctx.drawImage(img, 0, 0, w, h);
+  const { data } = ctx.getImageData(0, 0, w, h);
+
+  // bright mask — QR placeholders are white/gray blocks; the yellow frame
+  // fails the blue-channel check, the dark background fails everything
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    if (r > 120 && g > 120 && b > 120) mask[i] = 1;
+  }
+
+  // connected components (4-neighbour flood fill, iterative)
+  const seen = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const found: { cx: number; cy: number; size: number }[] = [];
+
+  for (let start = 0; start < w * h; start++) {
+    if (!mask[start] || seen[start]) continue;
+    let minX = w, maxX = 0, minY = h, maxY = 0, count = 0;
+    stack.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    while (stack.length) {
+      const p = stack.pop()!;
+      const px = p % w;
+      const py = (p / w) | 0;
+      count++;
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+      if (px > 0 && mask[p - 1] && !seen[p - 1]) { seen[p - 1] = 1; stack.push(p - 1); }
+      if (px < w - 1 && mask[p + 1] && !seen[p + 1]) { seen[p + 1] = 1; stack.push(p + 1); }
+      if (py > 0 && mask[p - w] && !seen[p - w]) { seen[p - w] = 1; stack.push(p - w); }
+      if (py < h - 1 && mask[p + w] && !seen[p + w]) { seen[p + w] = 1; stack.push(p + w); }
+    }
+    const bw = maxX - minX + 1;
+    const bh = maxY - minY + 1;
+    if (bw < w * 0.03 || bw > w * 0.35) continue; // too small / too big
+    const aspect = bw / bh;
+    if (aspect < 0.7 || aspect > 1.4) continue; // not square-ish
+    const fill = count / (bw * bh);
+    if (fill < 0.3) continue; // hollow shapes (text blocks, frames)
+    found.push({
+      cx: ((minX + bw / 2) / w) * 100,
+      cy: ((minY + bh / 2) / h) * 100,
+      size: (bw / w) * 100,
+    });
+  }
+
+  // reading order: group into rows by vertical proximity, then sort by x
+  found.sort((a, b) => a.cy - b.cy);
+  const rows: (typeof found)[] = [];
+  for (const f of found) {
+    const row = rows.find(
+      (r) => Math.abs(r[0].cy - f.cy) < Math.max(f.size, 3),
+    );
+    if (row) row.push(f);
+    else rows.push([f]);
+  }
+  const ordered = rows.flatMap((r) => r.sort((a, b) => a.cx - b.cx));
+
+  return ordered.map((f, i) => ({
+    id: i + 1,
+    x: f.cx,
+    y: f.cy,
+    size: f.size,
+  }));
+}
+
 function timestampName() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -94,6 +181,8 @@ export function LabelSheet({ secret }: { secret: string }) {
   const [showCode, setShowCode] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [expanded, setExpanded] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectMsg, setDetectMsg] = useState("");
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -134,6 +223,25 @@ export function LabelSheet({ secret }: { secret: string }) {
     })();
   }, [secret, loadHistory]);
 
+  async function runDetection(src: string) {
+    setDetecting(true);
+    setDetectMsg("");
+    try {
+      const detected = await detectQrSlots(src);
+      if (detected.length > 0) {
+        setSlots(detected);
+        setSelected(null);
+        setCodes([]);
+        setDetectMsg(`✨ ${detected.length} QRs detectados e alinhados automaticamente!`);
+      } else {
+        setDetectMsg("Não achei QRs de exemplo na arte — posicione manualmente.");
+      }
+    } catch {
+      setDetectMsg("Erro ao analisar a imagem.");
+    }
+    setDetecting(false);
+  }
+
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -142,6 +250,8 @@ export function LabelSheet({ secret }: { secret: string }) {
       const { dataUrl, w, h } = await downscaleImage(reader.result as string);
       setArtSrc(dataUrl);
       setArtDims({ w, h });
+      // the art usually carries sample QRs — find them and align the slots
+      runDetection(dataUrl);
     };
     reader.readAsDataURL(file);
   }
@@ -498,6 +608,18 @@ export function LabelSheet({ secret }: { secret: string }) {
                 ? "Arte carregada e salva. Suba outra pra substituir."
                 : "Sem arte, mostro uma folha em branco pra você posicionar."}
             </p>
+            {artSrc && (
+              <button
+                onClick={() => runDetection(artSrc)}
+                disabled={detecting}
+                className="mt-3 w-full rounded-lg border border-move-yellow/50 px-3 py-2 text-xs font-bold text-move-yellow hover:bg-move-yellow/10 disabled:opacity-60"
+              >
+                {detecting ? "Analisando arte…" : "🪄 Detectar QRs automaticamente"}
+              </button>
+            )}
+            {detectMsg && (
+              <p className="mt-2 text-xs font-semibold text-move-yellow">{detectMsg}</p>
+            )}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-move-panel p-4 space-y-3">
