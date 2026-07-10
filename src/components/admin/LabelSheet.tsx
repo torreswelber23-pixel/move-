@@ -92,10 +92,20 @@ export function LabelSheet({ secret }: { secret: string }) {
   const [savedFlash, setSavedFlash] = useState(false);
   const [history, setHistory] = useState<PrintLog[]>([]);
   const [showCode, setShowCode] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  // lock page scroll while the fullscreen editor is open
+  useEffect(() => {
+    document.body.style.overflow = expanded ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [expanded]);
 
   const loadHistory = useCallback(async () => {
     const supabase = getSupabase();
@@ -146,6 +156,15 @@ export function LabelSheet({ secret }: { secret: string }) {
     setSlots((s) => s.filter((sl) => sl.id !== id));
     if (selected === id) setSelected(null);
     setCodes([]);
+  }
+
+  const selectedSlot = slots.find((s) => s.id === selected) ?? null;
+
+  function updateSelected(patch: Partial<Slot>) {
+    if (selected == null) return;
+    setSlots((prev) =>
+      prev.map((s) => (s.id === selected ? { ...s, ...patch } : s)),
+    );
   }
 
   function onSlotPointerDown(
@@ -297,15 +316,169 @@ export function LabelSheet({ secret }: { secret: string }) {
 
   const aspectRatio = artSrc ? artDims.w / artDims.h : A4_RATIO;
 
+  /* ---------- editor pieces (rendered inline OR fullscreen) ---------- */
+
+  const zoomBar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={() => setZoom((z) => clamp(z - 0.5, 1, 4))}
+        className="rounded-lg border border-white/15 px-3 py-1.5 text-sm font-bold text-neutral-200 hover:border-move-yellow"
+      >
+        −
+      </button>
+      <span className="min-w-[3.5rem] text-center text-xs font-bold text-neutral-300">
+        🔍 {Math.round(zoom * 100)}%
+      </span>
+      <button
+        onClick={() => setZoom((z) => clamp(z + 0.5, 1, 4))}
+        className="rounded-lg border border-white/15 px-3 py-1.5 text-sm font-bold text-neutral-200 hover:border-move-yellow"
+      >
+        +
+      </button>
+      {zoom > 1 && (
+        <button
+          onClick={() => setZoom(1)}
+          className="rounded-lg border border-white/15 px-2 py-1.5 text-xs font-semibold text-neutral-400 hover:border-move-yellow"
+        >
+          100%
+        </button>
+      )}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="ml-auto rounded-lg bg-move-yellow px-3 py-1.5 text-xs font-black uppercase text-black"
+      >
+        {expanded ? "✕ Fechar" : "⛶ Tela cheia"}
+      </button>
+    </div>
+  );
+
+  const editorCanvas = (
+    <div
+      className="overflow-auto rounded-lg border border-white/10 bg-neutral-800"
+      style={{ maxHeight: expanded ? "none" : "70vh", flex: expanded ? 1 : undefined }}
+    >
+      <div style={{ width: `${zoom * 100}%` }}>
+        <div
+          ref={containerRef}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          className="relative w-full select-none bg-white"
+          style={{ aspectRatio: `${aspectRatio}` }}
+        >
+          {artSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={artSrc}
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-white" />
+          )}
+          {slots.map((slot) => (
+            <div
+              key={slot.id}
+              onPointerDown={(e) => onSlotPointerDown(e, slot.id, "move")}
+              onClick={() => setSelected(slot.id)}
+              className={`absolute flex cursor-move items-center justify-center border-2 ${
+                selected === slot.id
+                  ? "border-move-yellow bg-move-yellow/20"
+                  : "border-black/40 bg-black/10"
+              }`}
+              style={{
+                left: `${slot.x}%`,
+                top: `${slot.y}%`,
+                width: `${slot.size}%`,
+                aspectRatio: "1 / 1",
+                transform: "translate(-50%, -50%)",
+                touchAction: "none",
+              }}
+            >
+              <span className="pointer-events-none text-[10px] font-bold text-black/70">
+                {codes[slots.findIndex((s) => s.id === slot.id)] || "QR"}
+              </span>
+              <div
+                onPointerDown={(e) => onSlotPointerDown(e, slot.id, "resize")}
+                className="absolute -bottom-1.5 -right-1.5 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-move-yellow"
+                style={{ touchAction: "none" }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const sliderPanel = selectedSlot && (
+    <div className="mt-3 rounded-xl border border-move-yellow/40 bg-move-panel p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-wide text-move-yellow">
+          🎯 QR selecionado — ajuste fino
+        </p>
+        <button
+          onClick={() => removeSlot(selectedSlot.id)}
+          className="text-xs font-bold text-red-400/80 hover:text-red-400"
+        >
+          Remover
+        </button>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase text-neutral-500">
+            ↔ Horizontal: {selectedSlot.x.toFixed(1)}%
+          </span>
+          <input
+            type="range"
+            min={2}
+            max={98}
+            step={0.2}
+            value={selectedSlot.x}
+            onChange={(e) => updateSelected({ x: Number(e.target.value) })}
+            className="w-full accent-move-yellow"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase text-neutral-500">
+            ↕ Vertical: {selectedSlot.y.toFixed(1)}%
+          </span>
+          <input
+            type="range"
+            min={2}
+            max={98}
+            step={0.2}
+            value={selectedSlot.y}
+            onChange={(e) => updateSelected({ y: Number(e.target.value) })}
+            className="w-full accent-move-yellow"
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-semibold uppercase text-neutral-500">
+            ⬜ Tamanho: {selectedSlot.size.toFixed(1)}%
+          </span>
+          <input
+            type="range"
+            min={4}
+            max={60}
+            step={0.2}
+            value={selectedSlot.size}
+            onChange={(e) => updateSelected({ size: Number(e.target.value) })}
+            className="w-full accent-move-yellow"
+          />
+        </label>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <h2 className="font-display text-2xl uppercase text-white">
         Folha A4 · QR nos rótulos
       </h2>
       <p className="mt-2 max-w-2xl text-sm text-neutral-400">
-        Suba a arte, arraste cada QR pra cima do rótulo certo e ajuste o tamanho
-        pelo cantinho amarelo. Clique em <b>Salvar layout</b> — da próxima vez
-        tudo carrega automático, só troca os códigos.
+        Toque num QR pra selecionar e use as barrinhas de ajuste fino (ou
+        arraste). Use o zoom e a tela cheia pra encaixar certinho. Clique em{" "}
+        <b>Salvar layout</b> — da próxima vez tudo carrega automático.
       </p>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -339,14 +512,6 @@ export function LabelSheet({ secret }: { secret: string }) {
                 + Adicionar
               </button>
             </div>
-            {selected != null && (
-              <button
-                onClick={() => removeSlot(selected)}
-                className="w-full rounded-lg border border-red-400/40 px-2 py-1.5 text-xs font-bold text-red-400 hover:bg-red-400/10"
-              >
-                Remover QR selecionado
-              </button>
-            )}
             <label className="flex items-center gap-2 text-sm text-neutral-300">
               <input
                 type="checkbox"
@@ -408,61 +573,46 @@ export function LabelSheet({ secret }: { secret: string }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4">
-          <p className="mb-3 text-xs font-semibold uppercase text-neutral-500">
-            {loadingTpl
-              ? "Carregando layout salvo…"
-              : "Arraste cada QR pro lugar certo. Puxe o cantinho ↘ pra redimensionar."}
-          </p>
-          <div
-            ref={containerRef}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            className="relative mx-auto max-w-md select-none overflow-hidden rounded-lg bg-white"
-            style={{ aspectRatio: `${aspectRatio}` }}
-          >
-            {artSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={artSrc}
-                alt=""
-                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-                draggable={false}
-              />
-            ) : (
-              <div className="absolute inset-0 bg-white" />
-            )}
-            {slots.map((slot) => (
-              <div
-                key={slot.id}
-                onPointerDown={(e) => onSlotPointerDown(e, slot.id, "move")}
-                onClick={() => setSelected(slot.id)}
-                className={`absolute flex cursor-move items-center justify-center border-2 ${
-                  selected === slot.id
-                    ? "border-move-yellow bg-move-yellow/20"
-                    : "border-black/40 bg-black/10"
-                }`}
-                style={{
-                  left: `${slot.x}%`,
-                  top: `${slot.y}%`,
-                  width: `${slot.size}%`,
-                  aspectRatio: "1 / 1",
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                <span className="pointer-events-none text-[10px] font-bold text-black/70">
-                  {codes[slots.findIndex((s) => s.id === slot.id)] || "QR"}
-                </span>
-                <div
-                  onPointerDown={(e) => onSlotPointerDown(e, slot.id, "resize")}
-                  className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-full border-2 border-white bg-move-yellow"
-                />
-              </div>
-            ))}
+        {/* inline editor (hidden while fullscreen is open) */}
+        {!expanded && (
+          <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase text-neutral-500">
+              {loadingTpl
+                ? "Carregando layout salvo…"
+                : "Toque num QR pra selecionar. Arraste ou use as barrinhas."}
+            </p>
+            {zoomBar}
+            <div className="mt-3">{editorCanvas}</div>
+            {sliderPanel}
           </div>
-          <canvas ref={canvasRef} className="hidden" />
-        </div>
+        )}
       </div>
+
+      {/* fullscreen editor overlay */}
+      {expanded && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950 p-3">
+          {zoomBar}
+          <div className="mt-3 flex min-h-0 flex-1 flex-col">{editorCanvas}</div>
+          {sliderPanel}
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={saveTemplate}
+              disabled={saving}
+              className="flex-1 rounded-lg bg-move-yellow px-4 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-60"
+            >
+              {saving ? "Salvando…" : savedFlash ? "✓ Salvo" : "💾 Salvar layout"}
+            </button>
+            <button
+              onClick={() => setExpanded(false)}
+              className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-bold text-neutral-200"
+            >
+              Concluir
+            </button>
+          </div>
+        </div>
+      )}
+
+      <canvas ref={canvasRef} className="hidden" />
 
       <h3 className="mt-8 text-sm font-bold uppercase tracking-wide text-neutral-400">
         Histórico de folhas geradas
