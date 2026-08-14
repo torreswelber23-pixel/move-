@@ -238,8 +238,8 @@ export function DriverPortal() {
             <p className="mt-1 text-sm text-neutral-300">
               Traga outro motorista pra rede e ganhe{" "}
               <b className="text-move-yellow">R${dash.referral_bonus}</b> quando ele
-              ativar. Você já tem{" "}
-              <b className="text-move-yellow">{dash.referrals}</b> indicação(ões) ativa(s).
+              vender 100 garrafas. Você já tem{" "}
+              <b className="text-move-yellow">{dash.referrals}</b> indicação(ões) que bateram a meta.
             </p>
             <div className="mt-3 flex items-center gap-2">
               <span className="flex-1 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-center font-mono text-lg font-bold tracking-[0.3em] text-move-yellow">
