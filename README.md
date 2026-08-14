@@ -1,16 +1,15 @@
-# MOVE+ 💧
+# Água Premiada 💧🎁
 
-> Esta não é apenas uma garrafa de água. Cada garrafa, um código único. Uma nova experiência.
-> **Beba. Escaneie. Descubra.**
+> Parabéns! Escaneie o QR code e veja o seu prêmio.
 
-App gamificado da marca de água **MOVE+**. Cada garrafa traz um QR code único; ao
-escanear, o consumidor desbloqueia uma experiência (cupom, desafio, conteúdo
-secreto, recompensa da comunidade…). Inclui painel de administração para gerar os
-códigos (com QR), gerenciar experiências e acompanhar os scans.
+App da marca de água **Água Premiada**. Cada garrafa traz um QR code único; ao
+escanear, o consumidor se cadastra e concorre a um prêmio em dinheiro sorteado
+entre os participantes. Inclui painel administrativo completo e uma rede de
+motoristas parceiros que vendem as garrafas.
 
 ## Stack
 
-- **Next.js 15** (App Router) + TypeScript
+- **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS**
 - **Supabase** (Postgres) — toda a lógica sensível roda em funções `SECURITY DEFINER`
   gated por senha; as tabelas têm RLS ligado sem acesso direto pela anon key.
@@ -18,21 +17,52 @@ códigos (com QR), gerenciar experiências e acompanhar os scans.
 
 ## Rotas
 
-| Rota          | Descrição                                                        |
-| ------------- | ---------------------------------------------------------------- |
-| `/`           | Landing da marca (Beba. Escaneie. Descubra.)                     |
-| `/s/[code]`   | Experiência do scan — valida o código e revela a recompensa      |
-| `/admin`      | Painel: estatísticas, geração de códigos (QR) e CRUD de experiências |
+| Rota          | Descrição                                                          |
+| ------------- | ------------------------------------------------------------------- |
+| `/`           | Landing da marca                                                    |
+| `/s/[code]`   | Scan da garrafa — valida o código, mostra estado (aberto/expirado/já cadastrado) e cadastra o participante no sorteio |
+| `/motorista`  | Portal do motorista parceiro — cadastro, login e painel com nível, estoque e indicações |
+| `/admin`      | Painel administrativo (abas abaixo)                                 |
+
+## Painel admin
+
+- **Sorteio** — participantes, sortear ganhador, configurações (prêmio, validade do código, link do grupo, "onde comprar")
+- **Rótulos** — sobe a arte da folha A4, detecta os QRs de exemplo automaticamente (ou arrasta manualmente), gera os códigos e imprime
+- **Motoristas** — aprova cadastros, entrega lotes/estoque de garrafas, registra vendas em dinheiro no acerto
+- **Visão geral** — estatísticas gerais
+- **Códigos** — geração avulsa de códigos com QR
+
+## Mecânica do código
+
+Cada garrafa tem um código único de uso único, com validade configurável
+(padrão 1h após o primeiro scan). Depois de expirado ou já resgatado, a
+página mostra um CTA para comprar uma garrafa nova.
+
+## Rede de motoristas
+
+Motoristas se cadastram em `/motorista`, recebem um código de acesso e um
+código de indicação. Sobem de nível conforme as vendas do mês:
+
+| Nível | Meta | Benefício |
+| --- | --- | --- |
+| 🥉 Bronze | Entrou na rede | R$1,00/garrafa |
+| 🥈 Prata | 300 garrafas/mês | + bônus de R$200 |
+| 🥇 Ouro | 600 garrafas/mês | R$1,20/garrafa + kit |
+| 💎 Diamante | 1.000 garrafas/mês | R$1,50/garrafa + bônus |
+
+Modelo de consignação: o admin entrega um estoque de garrafas ao motorista;
+vendas em dinheiro são registradas manualmente no acerto (abate o estoque e
+conta pra comissão/nível). Pagamento via PIX automático (banner com QR do
+motorista, confirmação via gateway) é a próxima etapa planejada.
 
 ## Banco de dados (prefixo `move_`)
 
-Tabelas: `move_experiences`, `move_bottles`, `move_scans`, `move_settings`.
-Funções principais:
+Principais tabelas: `move_bottles`, `move_scans`, `move_raffle_entries`,
+`move_drivers`, `move_stock_deliveries`, `move_cash_sales`, `move_settings`,
+`move_label_templates`, `move_label_prints`.
 
-- `move_scan_bottle(code, ip, ua)` — atribui uma experiência (sorteio ponderado)
-  no primeiro scan, registra o evento e retorna a recompensa.
-- `move_admin_*` — geração de códigos, CRUD de experiências, stats. Todas exigem a
-  senha do admin (armazenada em `move_settings.admin_secret`).
+Todo acesso do cliente passa por funções `SECURITY DEFINER` gated pela senha
+do admin (`move_check_admin`), nunca direto nas tabelas.
 
 ## Variáveis de ambiente
 
@@ -41,8 +71,9 @@ NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
 ```
 
-> A senha do admin **não** fica em env — é validada no banco. Senha inicial:
-> `movemais2026` (troque com `select move_admin_set_secret('movemais2026','NOVA_SENHA')`).
+> A senha do admin **não** fica em env — é validada no banco, na tabela
+> `move_settings` (chave `admin_secret`). Troque com:
+> `select move_admin_set_secret('senha_atual','nova_senha')`.
 
 ## Rodando localmente
 
@@ -50,11 +81,3 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
 npm install
 npm run dev
 ```
-
-## Admin
-
-1. Acesse `/admin`
-2. Entre com a senha
-3. **Códigos** → gere N códigos, imprima a folha de QR e cole nos rótulos
-4. **Experiências** → crie recompensas com raridade e peso (chance de sorteio)
-5. **Visão geral** → acompanhe os scans em tempo real

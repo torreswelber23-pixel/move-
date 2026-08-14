@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
-import { MoveLogo } from "@/components/MoveLogo";
+import { BrandLogo } from "@/components/BrandLogo";
 
 interface LevelInfo {
   level: string;
@@ -135,7 +135,7 @@ export function DriverPortal() {
   function shareReferral() {
     if (!dash?.referral_code) return;
     const msg = encodeURIComponent(
-      `🚗💧 Vem ser motorista parceiro MOVE+! Você ganha por cada garrafa vendida e sobe de nível. Cadastre-se com o meu código: ${dash.referral_code} → ${window.location.origin}/motorista`,
+      `🚗💧 Vem ser motorista parceiro Água Premiada! Você ganha por cada garrafa vendida e sobe de nível. Cadastre-se com o meu código: ${dash.referral_code} → ${window.location.origin}/motorista`,
     );
     window.open(`https://wa.me/?text=${msg}`, "_blank");
   }
@@ -150,7 +150,7 @@ export function DriverPortal() {
       <main className="min-h-screen bg-move-dark bg-grain px-5 py-6">
         <div className="mx-auto max-w-md">
           <div className="flex items-center justify-between">
-            <MoveLogo size="text-xl" />
+            <BrandLogo size="text-xl" />
             <button
               onClick={logout}
               className="text-xs font-semibold uppercase text-neutral-500 hover:text-move-yellow"
@@ -226,7 +226,7 @@ export function DriverPortal() {
           </div>
           {(dash.stock_qty ?? 0) === 0 && (
             <p className="mt-2 text-center text-xs text-neutral-500">
-              Sem estoque no momento — fale com a MOVE+ pra pegar mais garrafas.
+              Sem estoque no momento — fale com a Água Premiada pra pegar mais garrafas.
             </p>
           )}
 
@@ -288,7 +288,7 @@ export function DriverPortal() {
           {/* levels table */}
           <div className="mt-4 rounded-2xl border border-white/10 bg-move-panel p-5">
             <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-              📈 Sua carreira MOVE+
+              📈 Sua carreira Água Premiada
             </p>
             <div className="mt-2 space-y-2">
               {LEVELS.map((l) => (
@@ -319,7 +319,7 @@ export function DriverPortal() {
     <main className="min-h-screen bg-move-dark bg-grain px-5 py-8">
       <div className="mx-auto max-w-md">
         <div className="flex items-center justify-between">
-          <MoveLogo size="text-xl" />
+          <BrandLogo size="text-xl" />
           <Link
             href="/"
             className="text-xs font-semibold uppercase text-neutral-500 hover:text-move-yellow"
@@ -335,7 +335,7 @@ export function DriverPortal() {
               Motorista <span className="text-move-yellow">parceiro</span>
             </h1>
             <p className="mx-auto mt-3 max-w-xs text-neutral-300">
-              Venda água MOVE+ no seu carro, ganhe por garrafa e{" "}
+              Venda Água Premiada no seu carro, ganhe por garrafa e{" "}
               <b className="text-move-yellow">suba de nível</b>. Quanto mais você
               vende, mais você ganha.
             </p>

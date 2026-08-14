@@ -418,7 +418,7 @@ export function LabelSheet({ secret }: { secret: string }) {
     const w = window.open("");
     if (!w) return;
     w.document.write(
-      `<html><head><title>MOVE+ folha</title><style>@page{size:A4;margin:0}body{margin:0}img{width:100%;display:block}</style></head><body><img src="${dataUrl}" onload="window.print()"/></body></html>`,
+      `<html><head><title>Folha Água Premiada</title><style>@page{size:A4;margin:0}body{margin:0}img{width:100%;display:block}</style></head><body><img src="${dataUrl}" onload="window.print()"/></body></html>`,
     );
     w.document.close();
     logPrint("print");

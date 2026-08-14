@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
-import { MoveLogo } from "@/components/MoveLogo";
+import { BrandLogo } from "@/components/BrandLogo";
 import { StatsPanel } from "@/components/admin/StatsPanel";
 import { CodesPanel } from "@/components/admin/CodesPanel";
 import { RafflePanel } from "@/components/admin/RafflePanel";
@@ -61,7 +61,7 @@ export default function AdminPage() {
           className="w-full max-w-sm rounded-2xl border border-white/10 bg-move-panel p-8"
         >
           <div className="text-center">
-            <MoveLogo size="text-3xl" />
+            <BrandLogo size="text-3xl" />
             <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
               Painel de administração
             </p>
@@ -101,7 +101,7 @@ export default function AdminPage() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-move-dark/90 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
-            <MoveLogo size="text-xl" />
+            <BrandLogo size="text-xl" />
             <span className="hidden text-xs font-bold uppercase tracking-[0.2em] text-neutral-500 sm:inline">
               Admin
             </span>

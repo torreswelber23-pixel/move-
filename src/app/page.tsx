@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { MoveLogo } from "@/components/MoveLogo";
+import { BrandLogo } from "@/components/BrandLogo";
 import { CodeEntry } from "@/components/CodeEntry";
 
 const BENEFITS = [
   { emoji: "💰", title: "Concorra a R$100", desc: "Cada garrafa escaneada te coloca na disputa do prêmio em dinheiro." },
   { emoji: "📲", title: "Cadastro em segundos", desc: "Nome + WhatsApp e pronto: você já está concorrendo." },
   { emoji: "🎉", title: "Sorteio ao vivo", desc: "O ganhador é sorteado no grupo, na frente de todo mundo." },
-  { emoji: "💛", title: "Comunidade MOVE+", desc: "Entre no grupo e não perca os próximos sorteios e drops." },
+  { emoji: "💛", title: "Comunidade Água Premiada", desc: "Entre no grupo e não perca os próximos sorteios e drops." },
   { emoji: "💧", title: "Quanto mais garrafas", desc: "Mais códigos, mais chances de ser o sortudo do PIX." },
 ];
 
@@ -22,7 +22,7 @@ export default function Home() {
     <main className="relative min-h-screen bg-move-dark bg-grain overflow-hidden">
       {/* top bar */}
       <header className="relative z-10 flex items-center justify-between px-5 py-5 sm:px-8">
-        <MoveLogo size="text-2xl" />
+        <BrandLogo size="text-2xl" />
         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-move-yellow/80">
           Hidrate-se · Viva mais
         </span>
@@ -32,11 +32,11 @@ export default function Home() {
       <section className="relative z-10 px-5 pt-8 pb-16 sm:px-8 sm:pt-14">
         <div className="mx-auto max-w-3xl text-center">
           <p className="mb-5 inline-block rounded-full border border-move-yellow/40 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-move-yellow">
-            Esta não é apenas uma garrafa de água
+            🎁 Parabéns! Escaneie o QR code e veja o seu prêmio
           </p>
-          <h1 className="font-display text-6xl leading-[0.9] sm:text-8xl">
-            <span className="shine">MOVE</span>
-            <span className="text-move-yellow">+</span>
+          <h1 className="font-display text-5xl leading-[0.9] sm:text-7xl">
+            <span className="text-white">Água</span>{" "}
+            <span className="shine">Premiada</span>
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-lg text-neutral-300 sm:text-xl">
             Cada garrafa tem um código único que te coloca na disputa de{" "}
@@ -114,7 +114,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-4 rounded-2xl border border-move-yellow/40 bg-move-yellow/5 p-6 sm:flex-row">
           <div>
             <p className="font-display text-2xl uppercase text-white">
-              🚗 É motorista? <span className="text-move-yellow">Ganhe vendendo MOVE+</span>
+              🚗 É motorista? <span className="text-move-yellow">Ganhe vendendo Água Premiada</span>
             </p>
             <p className="mt-1 text-sm text-neutral-300">
               R$1 por garrafa, níveis, bônus e ranking. Suba de Bronze a Diamante.
@@ -147,9 +147,9 @@ export default function Home() {
       {/* footer */}
       <footer className="relative z-10 border-t border-white/10 px-5 py-8 sm:px-8">
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-3 sm:flex-row">
-          <MoveLogo size="text-xl" />
+          <BrandLogo size="text-xl" />
           <p className="text-xs text-neutral-500">
-            © {new Date().getFullYear()} MOVE+ · Hidrate-se. Viva mais.
+            © {new Date().getFullYear()} Água Premiada · Hidrate-se. Viva mais.
           </p>
           <Link
             href="/admin"

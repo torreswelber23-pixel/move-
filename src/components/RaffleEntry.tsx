@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import type { CheckResult, RegisterResult } from "@/lib/types";
-import { MoveLogo } from "@/components/MoveLogo";
+import { BrandLogo } from "@/components/BrandLogo";
 
 type Stage = "opening" | "form" | "done" | "already" | "closed" | "expired";
 
@@ -81,7 +81,7 @@ export function RaffleEntry({
       </a>
     ) : (
       <p className="mt-7 rounded-xl border border-white/10 bg-move-panel px-4 py-3 text-sm text-neutral-400">
-        Compre uma garrafa MOVE+ e escaneie um novo código pra participar.
+        Compre uma garrafa Água Premiada e escaneie um novo código pra participar.
       </p>
     );
 
@@ -96,7 +96,7 @@ export function RaffleEntry({
       />
 
       <div className="relative z-10 w-full max-w-md">
-        <MoveLogo size="text-2xl" className="opacity-90" />
+        <BrandLogo size="text-2xl" className="opacity-90" />
 
         {stage === "opening" && (
           <div className="mt-24 flex flex-col items-center">
@@ -195,7 +195,7 @@ export function RaffleEntry({
               href="/"
               className="mt-6 inline-block text-xs font-semibold uppercase tracking-wider text-neutral-500 transition hover:text-move-yellow"
             >
-              Conheça a MOVE+
+              Conheça a Água Premiada
             </Link>
           </div>
         )}
@@ -216,7 +216,7 @@ export function RaffleEntry({
               href="/"
               className="mt-6 inline-block text-xs font-semibold uppercase tracking-wider text-neutral-500 transition hover:text-move-yellow"
             >
-              Conheça a MOVE+
+              Conheça a Água Premiada
             </Link>
           </div>
         )}
@@ -229,7 +229,7 @@ export function RaffleEntry({
             </h1>
             <p className="mx-auto mt-3 max-w-xs text-neutral-400">
               Este sorteio já foi finalizado. Fique ligado nos próximos drops da
-              MOVE+!
+              Água Premiada!
             </p>
             <BuyCta />
             <Link

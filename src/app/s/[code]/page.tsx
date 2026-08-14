@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { getSupabase } from "@/lib/supabase";
 import type { CheckResult } from "@/lib/types";
-import { MoveLogo } from "@/components/MoveLogo";
+import { BrandLogo } from "@/components/BrandLogo";
 import { RaffleEntry } from "@/components/RaffleEntry";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export default async function ScanPage({
         : "Código não encontrado. Confira as letras do rótulo.";
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-move-dark bg-grain px-6 text-center">
-        <MoveLogo size="text-4xl" />
+        <BrandLogo size="text-4xl" />
         <div className="mt-8 text-5xl">🤔</div>
         <h1 className="mt-4 font-display text-3xl uppercase text-white">Ops!</h1>
         <p className="mt-2 max-w-sm text-neutral-400">{reason}</p>

@@ -16,12 +16,12 @@ const anton = Anton({
 });
 
 export const metadata: Metadata = {
-  title: "MOVE+ | Hidrate-se. Viva mais.",
+  title: "Água Premiada | Parabéns, escaneie e veja seu prêmio",
   description:
-    "Esta não é apenas uma garrafa de água. Cada garrafa, um código único. Uma nova experiência. Beba. Escaneie. Descubra.",
+    "Cada garrafa Água Premiada tem um código único. Escaneie o QR code do rótulo e descubra o seu prêmio.",
   openGraph: {
-    title: "MOVE+ | Hidrate-se. Viva mais.",
-    description: "Beba. Escaneie. Descubra. Cada garrafa, uma nova experiência.",
+    title: "Água Premiada | Parabéns, escaneie e veja seu prêmio",
+    description: "Cada garrafa, um código único. Escaneie o QR code e descubra o seu prêmio.",
     type: "website",
   },
 };
