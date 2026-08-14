@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCodeLib from "qrcode";
+import { jsPDF } from "jspdf";
 import { getSupabase } from "@/lib/supabase";
 
 interface Slot {
@@ -17,6 +18,12 @@ interface PrintLog {
   action: string;
   count: number;
   created_at: string;
+}
+
+interface DriverOption {
+  id: string;
+  name: string;
+  phone: string;
 }
 
 const DEFAULT_SLOTS: Slot[] = Array.from({ length: 10 }, (_, i) => {
@@ -169,7 +176,8 @@ export function LabelSheet({ secret }: { secret: string }) {
   const [artSrc, setArtSrc] = useState("");
   const [artDims, setArtDims] = useState({ w: 1240, h: 1754 });
   const [slots, setSlots] = useState<Slot[]>(DEFAULT_SLOTS);
-  const [codes, setCodes] = useState<string[]>([]);
+  const [sheets, setSheets] = useState<string[][]>([]);
+  const [sheetCount, setSheetCount] = useState(1);
   const [batch, setBatch] = useState("");
   const [origin, setOrigin] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
@@ -183,6 +191,12 @@ export function LabelSheet({ secret }: { secret: string }) {
   const [expanded, setExpanded] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [detectMsg, setDetectMsg] = useState("");
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [assignDriverId, setAssignDriverId] = useState("");
+  const [assignMsg, setAssignMsg] = useState("");
+  const [building, setBuilding] = useState(false);
+
+  const codes = sheets[0] ?? []; // preview codes shown in the on-screen editor
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -205,6 +219,14 @@ export function LabelSheet({ secret }: { secret: string }) {
     setHistory((data as PrintLog[]) ?? []);
   }, [secret]);
 
+  const loadDrivers = useCallback(async () => {
+    const supabase = getSupabase();
+    const { data } = await supabase.rpc("move_admin_list_drivers", {
+      p_secret: secret,
+    });
+    setDrivers(((data as DriverOption[]) ?? []).map((d) => ({ id: d.id, name: d.name, phone: d.phone })));
+  }, [secret]);
+
   useEffect(() => {
     (async () => {
       const supabase = getSupabase();
@@ -220,8 +242,9 @@ export function LabelSheet({ secret }: { secret: string }) {
       }
       setLoadingTpl(false);
       loadHistory();
+      loadDrivers();
     })();
-  }, [secret, loadHistory]);
+  }, [secret, loadHistory, loadDrivers]);
 
   async function runDetection(src: string) {
     setDetecting(true);
@@ -231,7 +254,7 @@ export function LabelSheet({ secret }: { secret: string }) {
       if (detected.length > 0) {
         setSlots(detected);
         setSelected(null);
-        setCodes([]);
+        setSheets([]);
         setDetectMsg(`✨ ${detected.length} QRs detectados e alinhados automaticamente!`);
       } else {
         setDetectMsg("Não achei QRs de exemplo na arte — posicione manualmente.");
@@ -260,12 +283,12 @@ export function LabelSheet({ secret }: { secret: string }) {
     const id = (slots.reduce((m, s) => Math.max(m, s.id), 0) || 0) + 1;
     setSlots((s) => [...s, { id, x: 50, y: 50, size: 18 }]);
     setSelected(id);
-    setCodes([]);
+    setSheets([]);
   }
   function removeSlot(id: number) {
     setSlots((s) => s.filter((sl) => sl.id !== id));
     if (selected === id) setSelected(null);
-    setCodes([]);
+    setSheets([]);
   }
 
   const selectedSlot = slots.find((s) => s.id === selected) ?? null;
@@ -314,16 +337,42 @@ export function LabelSheet({ secret }: { secret: string }) {
 
   async function generateCodes() {
     if (slots.length === 0) return alert("Adicione pelo menos um QR na folha.");
+    if (sheetCount < 1) return alert("Quantidade de folhas inválida.");
+    if (assignDriverId && !batch.trim()) {
+      return alert("Pra atribuir a um motorista, dê um nome ao lote primeiro.");
+    }
     setGenerating(true);
+    setAssignMsg("");
     const supabase = getSupabase();
+    const total = slots.length * sheetCount;
     const { data, error } = await supabase.rpc("move_admin_generate_codes", {
       p_secret: secret,
-      p_count: slots.length,
+      p_count: total,
       p_batch: batch || null,
     });
     setGenerating(false);
     if (error) return alert("Erro ao gerar códigos.");
-    setCodes((data as string[]) ?? []);
+    const all = (data as string[]) ?? [];
+    const chunks: string[][] = [];
+    for (let i = 0; i < sheetCount; i++) {
+      chunks.push(all.slice(i * slots.length, (i + 1) * slots.length));
+    }
+    setSheets(chunks);
+
+    if (assignDriverId) {
+      const { data: assignCount, error: assignErr } = await supabase.rpc(
+        "move_admin_assign_batch",
+        { p_secret: secret, p_batch: batch, p_driver_id: assignDriverId },
+      );
+      const drv = drivers.find((d) => d.id === assignDriverId);
+      if (assignErr) {
+        setAssignMsg("Erro ao atribuir o lote ao motorista.");
+      } else {
+        setAssignMsg(
+          `✓ ${assignCount} garrafa(s) do lote "${batch}" atribuídas a ${drv?.name ?? "motorista"} — estoque dele atualizado.`,
+        );
+      }
+    }
   }
 
   async function saveTemplate() {
@@ -339,7 +388,7 @@ export function LabelSheet({ secret }: { secret: string }) {
     setTimeout(() => setSavedFlash(false), 1800);
   }
 
-  async function compose(): Promise<HTMLCanvasElement | null> {
+  async function composeSheet(sheetCodes: string[]): Promise<HTMLCanvasElement | null> {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const bgW = artDims.w;
@@ -358,7 +407,7 @@ export function LabelSheet({ secret }: { secret: string }) {
 
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i];
-      const code = codes[i];
+      const code = sheetCodes[i];
       if (!code) continue;
       const qrSize = (slot.size / 100) * bgW;
       const cx = (slot.x / 100) * bgW;
@@ -385,7 +434,16 @@ export function LabelSheet({ secret }: { secret: string }) {
         ctx.fillText(code, cx, qy + qrSize + pad * 2);
       }
     }
-    return canvas;
+    // clone off-screen so the shared canvas can be reused for the next sheet
+    const snap = document.createElement("canvas");
+    snap.width = bgW;
+    snap.height = bgH;
+    snap.getContext("2d")!.drawImage(canvas, 0, 0);
+    return snap;
+  }
+
+  function allCodesFlat() {
+    return sheets.flat();
   }
 
   async function logPrint(action: "download" | "print") {
@@ -394,37 +452,62 @@ export function LabelSheet({ secret }: { secret: string }) {
       p_secret: secret,
       p_batch: batch || null,
       p_action: action,
-      p_codes: codes,
+      p_codes: allCodesFlat(),
     });
     loadHistory();
   }
 
-  async function download() {
-    if (codes.length === 0) return alert("Gere os códigos primeiro.");
-    const canvas = await compose();
-    if (!canvas) return;
-    const a = document.createElement("a");
-    a.href = canvas.toDataURL("image/png");
-    a.download = `moveplus-folha-${batch || "sem-lote"}-${timestampName()}.png`;
-    a.click();
-    logPrint("download");
+  async function downloadPdf() {
+    if (sheets.length === 0) return alert("Gere os códigos primeiro.");
+    setBuilding(true);
+    try {
+      const portrait = artDims.h >= artDims.w;
+      const pdf = new jsPDF({
+        orientation: portrait ? "portrait" : "landscape",
+        unit: "px",
+        format: [artDims.w, artDims.h],
+        compress: true,
+      });
+      for (let i = 0; i < sheets.length; i++) {
+        const canvas = await composeSheet(sheets[i]);
+        if (!canvas) continue;
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        if (i > 0) pdf.addPage([artDims.w, artDims.h], portrait ? "portrait" : "landscape");
+        pdf.addImage(dataUrl, "JPEG", 0, 0, artDims.w, artDims.h);
+      }
+      pdf.save(`aguapremiada-folhas-${batch || "sem-lote"}-${timestampName()}.pdf`);
+      await logPrint("download");
+    } finally {
+      setBuilding(false);
+    }
   }
 
-  async function printSheet() {
-    if (codes.length === 0) return alert("Gere os códigos primeiro.");
-    const canvas = await compose();
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL("image/png");
+  async function printSheets() {
+    if (sheets.length === 0) return alert("Gere os códigos primeiro.");
+    setBuilding(true);
+    const dataUrls: string[] = [];
+    for (const sheetCodes of sheets) {
+      const canvas = await composeSheet(sheetCodes);
+      if (canvas) dataUrls.push(canvas.toDataURL("image/png"));
+    }
+    setBuilding(false);
     const w = window.open("");
     if (!w) return;
+    const imgs = dataUrls
+      .map(
+        (u) =>
+          `<img src="${u}" style="width:100%;display:block;page-break-after:always" />`,
+      )
+      .join("");
     w.document.write(
-      `<html><head><title>Folha Água Premiada</title><style>@page{size:A4;margin:0}body{margin:0}img{width:100%;display:block}</style></head><body><img src="${dataUrl}" onload="window.print()"/></body></html>`,
+      `<html><head><title>Folhas Água Premiada</title><style>@page{size:A4;margin:0}body{margin:0}</style></head><body>${imgs}<script>window.onload=()=>window.print()</script></body></html>`,
     );
     w.document.close();
     logPrint("print");
   }
 
   const aspectRatio = artSrc ? artDims.w / artDims.h : A4_RATIO;
+  const totalCodes = slots.length * sheetCount;
 
   /* ---------- editor pieces (rendered inline OR fullscreen) ---------- */
 
@@ -655,7 +738,7 @@ export function LabelSheet({ secret }: { secret: string }) {
           <div className="rounded-2xl border border-white/10 bg-move-panel p-4 space-y-3">
             <label className="block">
               <span className="text-xs font-semibold uppercase text-neutral-500">
-                Lote (opcional)
+                Lote (nome)
               </span>
               <input
                 value={batch}
@@ -664,29 +747,68 @@ export function LabelSheet({ secret }: { secret: string }) {
                 className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
               />
             </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-neutral-500">
+                Quantas folhas você quer imprimir?
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={sheetCount}
+                onChange={(e) => setSheetCount(Math.max(1, Number(e.target.value)))}
+                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+              />
+              <span className="mt-1 block text-xs text-neutral-600">
+                {totalCodes} código(s) no total ({slots.length} por folha)
+              </span>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase text-neutral-500">
+                Atribuir o lote a um motorista (opcional)
+              </span>
+              <select
+                value={assignDriverId}
+                onChange={(e) => setAssignDriverId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+              >
+                <option value="">Não atribuir agora</option>
+                {drivers.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.phone})
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-neutral-600">
+                As garrafas desse lote entram no estoque dele.
+              </span>
+            </label>
             <button
               onClick={generateCodes}
               disabled={generating}
               className="w-full rounded-lg bg-move-yellow px-4 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-60"
             >
-              {generating ? "Gerando…" : `Gerar ${slots.length} códigos`}
+              {generating
+                ? "Gerando…"
+                : `Gerar ${totalCodes} código(s) · ${sheetCount} folha(s)`}
             </button>
-            {codes.length > 0 && (
+            {assignMsg && <p className="text-xs text-neutral-300">{assignMsg}</p>}
+            {sheets.length > 0 && (
               <p className="text-xs text-neutral-400">
-                {codes.length} código(s) prontos pra esta folha.
+                {sheets.flat().length} código(s) prontos em {sheets.length} folha(s).
               </p>
             )}
             <div className="flex gap-2">
               <button
-                onClick={download}
-                disabled={codes.length === 0}
+                onClick={downloadPdf}
+                disabled={sheets.length === 0 || building}
                 className="flex-1 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-move-yellow disabled:opacity-40"
               >
-                ⬇ Baixar PNG
+                {building ? "Montando…" : "⬇ Baixar PDF"}
               </button>
               <button
-                onClick={printSheet}
-                disabled={codes.length === 0}
+                onClick={printSheets}
+                disabled={sheets.length === 0 || building}
                 className="flex-1 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-move-yellow disabled:opacity-40"
               >
                 🖨️ Imprimir
@@ -728,7 +850,7 @@ export function LabelSheet({ secret }: { secret: string }) {
               onClick={() => setExpanded(false)}
               className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-bold text-neutral-200"
             >
-              Concluir
+              Concluído
             </button>
           </div>
         </div>
