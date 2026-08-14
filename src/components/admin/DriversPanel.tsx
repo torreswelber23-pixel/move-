@@ -12,8 +12,11 @@ interface DriverRow {
   status: string;
   referral_code: string;
   referred_by_name: string | null;
+  stock_qty: number;
   month_sales: number;
   total_sales: number;
+  cash_sales_month: number;
+  cash_amount_month: number;
   assigned_bottles: number;
   created_at: string;
 }
@@ -32,14 +35,34 @@ export function DriversPanel({ secret }: { secret: string }) {
   const [assignMsg, setAssignMsg] = useState("");
   const [assigning, setAssigning] = useState(false);
 
+  // consignment: bottle price + deliver stock + log cash sale
+  const [bottlePrice, setBottlePrice] = useState("5");
+  const [priceSaved, setPriceSaved] = useState(false);
+
+  const [deliverDriver, setDeliverDriver] = useState("");
+  const [deliverQty, setDeliverQty] = useState("50");
+  const [deliverNote, setDeliverNote] = useState("");
+  const [delivering, setDelivering] = useState(false);
+  const [deliverMsg, setDeliverMsg] = useState("");
+
+  const [cashDriver, setCashDriver] = useState("");
+  const [cashQty, setCashQty] = useState("1");
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashNote, setCashNote] = useState("");
+  const [loggingCash, setLoggingCash] = useState(false);
+  const [cashMsg, setCashMsg] = useState("");
+
   const supabase = getSupabase();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.rpc("move_admin_list_drivers", {
-      p_secret: secret,
-    });
-    setDrivers((data as DriverRow[]) ?? []);
+    const [d, s] = await Promise.all([
+      supabase.rpc("move_admin_list_drivers", { p_secret: secret }),
+      supabase.rpc("move_admin_get_settings", { p_secret: secret }),
+    ]);
+    setDrivers((d.data as DriverRow[]) ?? []);
+    const price = (s.data as { bottle_price?: string })?.bottle_price;
+    if (price) setBottlePrice(price);
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secret]);
@@ -47,6 +70,69 @@ export function DriversPanel({ secret }: { secret: string }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function savePrice() {
+    await supabase.rpc("move_admin_set_setting", {
+      p_secret: secret,
+      p_key: "bottle_price",
+      p_value: bottlePrice,
+    });
+    setPriceSaved(true);
+    setTimeout(() => setPriceSaved(false), 1500);
+  }
+
+  async function deliverStock(e: React.FormEvent) {
+    e.preventDefault();
+    const qty = Number(deliverQty);
+    if (!deliverDriver || !qty || qty <= 0) return;
+    setDelivering(true);
+    setDeliverMsg("");
+    const { data, error } = await supabase.rpc("move_admin_deliver_stock", {
+      p_secret: secret,
+      p_driver_id: deliverDriver,
+      p_quantity: qty,
+      p_note: deliverNote || null,
+    });
+    setDelivering(false);
+    const drv = drivers.find((d) => d.id === deliverDriver);
+    if (error) {
+      setDeliverMsg("Erro ao entregar estoque.");
+      return;
+    }
+    setDeliverMsg(`✓ ${qty} garrafa(s) entregues a ${drv?.name ?? "motorista"}. Estoque atual: ${data}.`);
+    setDeliverNote("");
+    load();
+  }
+
+  async function logCashSale(e: React.FormEvent) {
+    e.preventDefault();
+    const qty = Number(cashQty);
+    const amount = Number(cashAmount || Number(bottlePrice) * qty);
+    if (!cashDriver || !qty || qty <= 0) return;
+    setLoggingCash(true);
+    setCashMsg("");
+    const { data, error } = await supabase.rpc("move_admin_log_cash_sale", {
+      p_secret: secret,
+      p_driver_id: cashDriver,
+      p_quantity: qty,
+      p_amount: amount,
+      p_note: cashNote || null,
+    });
+    setLoggingCash(false);
+    const drv = drivers.find((d) => d.id === cashDriver);
+    const res = data as { ok: boolean; stock_qty?: number } | null;
+    if (error || !res?.ok) {
+      setCashMsg("Erro ao registrar venda.");
+      return;
+    }
+    setCashMsg(
+      `✓ Venda de ${qty} garrafa(s) (R$${amount}) registrada pra ${drv?.name ?? "motorista"}. Estoque restante: ${res.stock_qty}.`,
+    );
+    setCashAmount("");
+    setCashNote("");
+    setCashQty("1");
+    load();
+  }
 
   async function setStatus(id: string, status: string) {
     await supabase.rpc("move_admin_set_driver_status", {
@@ -92,9 +178,166 @@ export function DriversPanel({ secret }: { secret: string }) {
     <div>
       <h2 className="font-display text-2xl uppercase text-white">Motoristas</h2>
       <p className="mt-2 text-sm text-neutral-400">
-        A venda é contada quando uma garrafa do lote do motorista é escaneada
-        pela primeira vez. Atribua os lotes abaixo.
+        Modelo de consignação: entregue um estoque de garrafas ao motorista.
+        No acerto (ex: fim de semana), registre o que ele vendeu em dinheiro —
+        isso abate o estoque e conta pra comissão e pro nível dele.
       </p>
+
+      {/* bottle price */}
+      <div className="mt-5 flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-move-panel p-5">
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Preço da garrafa (R$)
+          </label>
+          <input
+            type="number"
+            step="0.5"
+            min="0"
+            value={bottlePrice}
+            onChange={(e) => setBottlePrice(e.target.value)}
+            className="mt-1 w-28 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <button
+          onClick={savePrice}
+          className="rounded-lg border border-white/15 px-4 py-2 text-xs font-bold text-neutral-200 hover:border-move-yellow"
+        >
+          {priceSaved ? "✓ Salvo" : "Salvar preço"}
+        </button>
+        <p className="text-xs text-neutral-600">
+          Usado como sugestão ao registrar vendas em dinheiro.
+        </p>
+      </div>
+
+      {/* deliver stock */}
+      <form
+        onSubmit={deliverStock}
+        className="mt-4 flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-move-panel p-5"
+      >
+        <p className="w-full text-xs font-bold uppercase tracking-wide text-neutral-400">
+          📦 Entregar estoque
+        </p>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Motorista
+          </label>
+          <select
+            value={deliverDriver}
+            onChange={(e) => setDeliverDriver(e.target.value)}
+            className="mt-1 w-52 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          >
+            <option value="">Selecione…</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} ({d.phone})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Quantidade
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={deliverQty}
+            onChange={(e) => setDeliverQty(e.target.value)}
+            className="mt-1 w-24 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Nota (opcional)
+          </label>
+          <input
+            value={deliverNote}
+            onChange={(e) => setDeliverNote(e.target.value)}
+            placeholder="ex: entrega 10/07"
+            className="mt-1 w-44 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={delivering || !deliverDriver || !deliverQty}
+          className="rounded-lg bg-move-yellow px-5 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-50"
+        >
+          {delivering ? "Entregando…" : "Entregar"}
+        </button>
+        {deliverMsg && <p className="w-full text-sm text-move-yellow">{deliverMsg}</p>}
+      </form>
+
+      {/* log cash sale */}
+      <form
+        onSubmit={logCashSale}
+        className="mt-4 flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-move-panel p-5"
+      >
+        <p className="w-full text-xs font-bold uppercase tracking-wide text-neutral-400">
+          💵 Registrar venda em dinheiro (acerto)
+        </p>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Motorista
+          </label>
+          <select
+            value={cashDriver}
+            onChange={(e) => setCashDriver(e.target.value)}
+            className="mt-1 w-52 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          >
+            <option value="">Selecione…</option>
+            {drivers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} · estoque: {d.stock_qty}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Quantidade
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={cashQty}
+            onChange={(e) => setCashQty(e.target.value)}
+            className="mt-1 w-20 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Valor total (R$)
+          </label>
+          <input
+            type="number"
+            step="0.5"
+            min="0"
+            value={cashAmount}
+            onChange={(e) => setCashAmount(e.target.value)}
+            placeholder={String(Number(bottlePrice) * Number(cashQty || 1))}
+            className="mt-1 w-28 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Nota (opcional)
+          </label>
+          <input
+            value={cashNote}
+            onChange={(e) => setCashNote(e.target.value)}
+            placeholder="ex: acerto sábado"
+            className="mt-1 w-40 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loggingCash || !cashDriver || !cashQty}
+          className="rounded-lg bg-move-yellow px-5 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-50"
+        >
+          {loggingCash ? "Registrando…" : "Registrar venda"}
+        </button>
+        {cashMsg && <p className="w-full text-sm text-move-yellow">{cashMsg}</p>}
+      </form>
 
       {/* assign batch */}
       <form
@@ -169,9 +412,10 @@ export function DriversPanel({ secret }: { secret: string }) {
               <th className="px-4 py-2">Motorista</th>
               <th className="px-4 py-2">WhatsApp</th>
               <th className="px-4 py-2">PIX</th>
+              <th className="px-4 py-2">Estoque</th>
               <th className="px-4 py-2">Mês</th>
               <th className="px-4 py-2">Total</th>
-              <th className="px-4 py-2">Garrafas</th>
+              <th className="px-4 py-2">Dinheiro (mês)</th>
               <th className="px-4 py-2">Indicado por</th>
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2"></th>
@@ -180,13 +424,13 @@ export function DriversPanel({ secret }: { secret: string }) {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-5 text-neutral-500">
+                <td colSpan={10} className="px-4 py-5 text-neutral-500">
                   Carregando…
                 </td>
               </tr>
             ) : drivers.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-5 text-neutral-500">
+                <td colSpan={10} className="px-4 py-5 text-neutral-500">
                   Nenhum motorista ainda. Divulgue o link /motorista.
                 </td>
               </tr>
@@ -203,9 +447,14 @@ export function DriversPanel({ secret }: { secret: string }) {
                     </td>
                     <td className="px-4 py-2 font-mono text-neutral-300">{d.phone}</td>
                     <td className="px-4 py-2 text-neutral-400">{d.pix_key ?? "—"}</td>
+                    <td className="px-4 py-2 font-bold text-white">{d.stock_qty}</td>
                     <td className="px-4 py-2 font-bold text-move-yellow">{d.month_sales}</td>
                     <td className="px-4 py-2 text-neutral-300">{d.total_sales}</td>
-                    <td className="px-4 py-2 text-neutral-400">{d.assigned_bottles}</td>
+                    <td className="px-4 py-2 text-neutral-400">
+                      {d.cash_sales_month > 0
+                        ? `${d.cash_sales_month} · R$${d.cash_amount_month}`
+                        : "—"}
+                    </td>
                     <td className="px-4 py-2 text-neutral-400">{d.referred_by_name ?? "—"}</td>
                     <td className="px-4 py-2">
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${st.cls}`}>

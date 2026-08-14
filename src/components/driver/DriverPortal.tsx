@@ -21,6 +21,8 @@ interface Dashboard {
   name?: string;
   status?: string;
   referral_code?: string;
+  stock_qty?: number;
+  bottle_price?: string;
   month_sales?: number;
   total_sales?: number;
   position?: number;
@@ -212,7 +214,8 @@ export function DriverPortal() {
           </div>
 
           {/* stats */}
-          <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            <Stat label="Estoque" value={String(dash.stock_qty ?? 0)} />
             <Stat label="Vendas no mês" value={String(dash.month_sales ?? 0)} />
             <Stat
               label="Ganhos do mês"
@@ -221,6 +224,11 @@ export function DriverPortal() {
             />
             <Stat label="Posição" value={`#${dash.position ?? "—"}`} />
           </div>
+          {(dash.stock_qty ?? 0) === 0 && (
+            <p className="mt-2 text-center text-xs text-neutral-500">
+              Sem estoque no momento — fale com a MOVE+ pra pegar mais garrafas.
+            </p>
+          )}
 
           {/* referral */}
           <div className="mt-4 rounded-2xl border border-white/10 bg-move-panel p-5">
