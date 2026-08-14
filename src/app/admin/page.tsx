@@ -8,8 +8,9 @@ import { CodesPanel } from "@/components/admin/CodesPanel";
 import { RafflePanel } from "@/components/admin/RafflePanel";
 import { LabelSheet } from "@/components/admin/LabelSheet";
 import { DriversPanel } from "@/components/admin/DriversPanel";
+import { EconomicsPanel } from "@/components/admin/EconomicsPanel";
 
-type Tab = "raffle" | "labels" | "drivers" | "stats" | "codes";
+type Tab = "raffle" | "labels" | "drivers" | "economics" | "stats" | "codes";
 
 export default function AdminPage() {
   const [secret, setSecret] = useState<string>("");
@@ -92,6 +93,7 @@ export default function AdminPage() {
     { id: "raffle", label: "Sorteio" },
     { id: "labels", label: "Rótulos" },
     { id: "drivers", label: "Motoristas" },
+    { id: "economics", label: "Financeiro" },
     { id: "stats", label: "Visão geral" },
     { id: "codes", label: "Códigos" },
   ];
@@ -134,6 +136,7 @@ export default function AdminPage() {
         {tab === "raffle" && <RafflePanel secret={secret} />}
         {tab === "labels" && <LabelSheet secret={secret} />}
         {tab === "drivers" && <DriversPanel secret={secret} />}
+        {tab === "economics" && <EconomicsPanel secret={secret} />}
         {tab === "stats" && <StatsPanel secret={secret} />}
         {tab === "codes" && <CodesPanel secret={secret} />}
       </div>

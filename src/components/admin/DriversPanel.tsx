@@ -40,7 +40,9 @@ export function DriversPanel({ secret }: { secret: string }) {
   const [priceSaved, setPriceSaved] = useState(false);
 
   const [deliverDriver, setDeliverDriver] = useState("");
-  const [deliverQty, setDeliverQty] = useState("50");
+  const [deliverQty, setDeliverQty] = useState("24");
+  const [deliverCooler, setDeliverCooler] = useState("0");
+  const [deliverIce, setDeliverIce] = useState("1");
   const [deliverNote, setDeliverNote] = useState("");
   const [delivering, setDelivering] = useState(false);
   const [deliverMsg, setDeliverMsg] = useState("");
@@ -84,7 +86,10 @@ export function DriversPanel({ secret }: { secret: string }) {
   async function deliverStock(e: React.FormEvent) {
     e.preventDefault();
     const qty = Number(deliverQty);
-    if (!deliverDriver || !qty || qty <= 0) return;
+    const coolers = Number(deliverCooler) || 0;
+    const ices = Number(deliverIce) || 0;
+    if (!deliverDriver || qty < 0) return;
+    if (qty === 0 && coolers === 0 && ices === 0) return;
     setDelivering(true);
     setDeliverMsg("");
     const { data, error } = await supabase.rpc("move_admin_deliver_stock", {
@@ -92,6 +97,8 @@ export function DriversPanel({ secret }: { secret: string }) {
       p_driver_id: deliverDriver,
       p_quantity: qty,
       p_note: deliverNote || null,
+      p_cooler_qty: coolers,
+      p_ice_qty: ices,
     });
     setDelivering(false);
     const drv = drivers.find((d) => d.id === deliverDriver);
@@ -99,8 +106,16 @@ export function DriversPanel({ secret }: { secret: string }) {
       setDeliverMsg("Erro ao entregar estoque.");
       return;
     }
-    setDeliverMsg(`✓ ${qty} garrafa(s) entregues a ${drv?.name ?? "motorista"}. Estoque atual: ${data}.`);
+    const kitParts = [
+      qty > 0 ? `${qty} garrafa(s)` : null,
+      coolers > 0 ? `${coolers} isopor` : null,
+      ices > 0 ? `${ices} gelo` : null,
+    ].filter(Boolean);
+    setDeliverMsg(
+      `✓ ${kitParts.join(" + ")} entregue(s) a ${drv?.name ?? "motorista"}. Estoque atual: ${data}.`,
+    );
     setDeliverNote("");
+    setDeliverCooler("0");
     load();
   }
 
@@ -215,7 +230,7 @@ export function DriversPanel({ secret }: { secret: string }) {
         className="mt-4 flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-move-panel p-5"
       >
         <p className="w-full text-xs font-bold uppercase tracking-wide text-neutral-400">
-          📦 Entregar estoque
+          📦 Entregar kit / estoque
         </p>
         <div>
           <label className="block text-xs font-semibold uppercase text-neutral-500">
@@ -236,14 +251,38 @@ export function DriversPanel({ secret }: { secret: string }) {
         </div>
         <div>
           <label className="block text-xs font-semibold uppercase text-neutral-500">
-            Quantidade
+            Garrafas
           </label>
           <input
             type="number"
-            min="1"
+            min="0"
             value={deliverQty}
             onChange={(e) => setDeliverQty(e.target.value)}
             className="mt-1 w-24 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Isopor
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={deliverCooler}
+            onChange={(e) => setDeliverCooler(e.target.value)}
+            className="mt-1 w-20 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase text-neutral-500">
+            Gelo
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={deliverIce}
+            onChange={(e) => setDeliverIce(e.target.value)}
+            className="mt-1 w-20 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
           />
         </div>
         <div>
@@ -254,12 +293,12 @@ export function DriversPanel({ secret }: { secret: string }) {
             value={deliverNote}
             onChange={(e) => setDeliverNote(e.target.value)}
             placeholder="ex: entrega 10/07"
-            className="mt-1 w-44 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
+            className="mt-1 w-40 rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-white focus:border-move-yellow focus:outline-none"
           />
         </div>
         <button
           type="submit"
-          disabled={delivering || !deliverDriver || !deliverQty}
+          disabled={delivering || !deliverDriver}
           className="rounded-lg bg-move-yellow px-5 py-2.5 text-sm font-black uppercase tracking-wider text-black disabled:opacity-50"
         >
           {delivering ? "Entregando…" : "Entregar"}
